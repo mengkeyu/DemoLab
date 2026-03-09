@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>末日水世界：大军压境 - 震撼打击版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0c4a6e;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            max-width: 500px;
+            margin: 0 auto;
+            background: linear-gradient(180deg, #082f49 0%, #0c4a6e 100%);
+            box-shadow: 0 0 100px rgba(0,0,0,0.5);
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .ui-layer {
+            position: absolute;
+            top: 15px;
+            left: 0;
+            right: 0;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 10;
+        }
+        .base-hp-bar {
+            width: 280px;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #ef4444;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(239, 68, 68, 0.4);
+        }
+        #base-hp-fill {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #f87171, #dc2626);
+            transition: width 0.1s;
+        }
+        .wave-indicator {
+            width: 280px;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+        #wave-progress-fill {
+            width: 0%;
+            height: 100%;
+            background: #22c55e;
+            transition: background-color 0.3s;
+        }
+        .stat-overlay {
+            position: absolute;
+            bottom: 120px;
+            left: 20px;
+            background: rgba(15, 23, 42, 0.85);
+            padding: 10px 15px;
+            border-radius: 12px;
+            color: #7dd3fc;
+            font-weight: bold;
+            font-size: 14px;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            backdrop-filter: blur(8px);
+        }
+        .pressure-tag {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 4px;
+            font-weight: 900;
+        }
+        #overlay-screen {
+            position: absolute;
+            inset: 0;
+            background: rgba(2, 6, 23, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 20;
+        }
+        .btn-action {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            padding: 20px 70px;
+            border-radius: 50px;
+            font-size: 1.8rem;
+            font-weight: bold;
+            pointer-events: auto;
+            cursor: pointer;
+            box-shadow: 0 15px 40px rgba(239, 68, 68, 0.4);
+            border: 2px solid rgba(255,255,255,0.2);
+            color: white;
+        }
+        .tip-overlay {
+            position: absolute;
+            bottom: 40px;
+            width: 100%;
+            text-align: center;
+            color: rgba(255,255,255,0.4);
+            font-size: 12px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="ui-layer">
+        <div class="text-[10px] text-red-400 font-bold mb-1 uppercase tracking-widest">敌方核心要塞</div>
+        <div class="base-hp-bar"><div id="base-hp-fill"></div></div>
+        <div class="text-white text-[11px] font-mono mt-1" id="base-hp-text">18000 / 18000</div>
+        
+        <div class="wave-indicator"><div id="wave-progress-fill"></div></div>
+        <div id="pressure-info" class="pressure-tag text-sky-400">威胁等级: 侦查中</div>
+    </div>
+
+    <div class="stat-overlay">
+        <div class="text-sky-400">蓝军规模: <span id="mob-count">0</span></div>
+        <div class="text-red-400 mt-1">红军规模: <span id="enemy-count">0</span></div>
+    </div>
+
+    <div class="tip-overlay">长按发射，摧毁基地爆出巨额金币</div>
+
+    <div id="overlay-screen">
+        <h1 id="title-msg" class="text-6xl font-black mb-6 italic text-red-500 text-center px-4 leading-tight">WATER WORLD:<br>SHAKE & GOLD</h1>
+        <p id="desc-msg" class="mb-10 text-center text-slate-300 px-8 text-lg text-balance">
+            打击感全面升级：<br>更大、更多的3D金币，伴随屏幕震动效果！<br>
+            手动控制发射节奏，尽情享受海上攻坚。
+        </p>
+        <button class="btn-action" id="action-btn">开火</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const hpFill = document.getElementById('base-hp-fill');
+    const hpText = document.getElementById('base-hp-text');
+    const mobCountEl = document.getElementById('mob-count');
+    const enemyCountEl = document.getElementById('enemy-count');
+    const waveProgressFill = document.getElementById('wave-progress-fill');
+    const pressureInfo = document.getElementById('pressure-info');
+    const overlay = document.getElementById('overlay-screen');
+    const actionBtn = document.getElementById('action-btn');
+
+    let gameActive = false;
+    let canvasWidth, canvasHeight;
+    let frameCount = 0;
+    let waveFrameCounter = 0; 
+    let isFiring = false; 
+
+    // 震动系统变量
+    let shakeIntensity = 0;
+
+    // 波次配置
+    const PRESSURES = [0.7, 1.2, 1.8, 2.5]; 
+    const WAVE_DURATIONS = [1200, 900, 480, 180]; 
+    let currentPressureIndex = 0;
+
+    const MAX_UNITS = 2000; 
+
+    let enemyBase = { hp: 18000, maxHp: 18000, y: 140, width: 280, height: 100 };
+    let playerRaft = { x: 0, y: 0, width: 80 };
+    
+    let survivors = []; 
+    let enemies = [];   
+    let gates = [];
+    let walls = []; 
+    let coins = []; 
+
+    const GRID_SIZE = 75; 
+    let grid = {};
+
+    function resize() {
+        const container = document.getElementById('game-container');
+        canvasWidth = container.clientWidth;
+        canvasHeight = container.clientHeight;
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+        playerRaft.x = canvasWidth / 2;
+        playerRaft.y = canvasHeight - 120;
+        initLevel();
+    }
+
+    function initLevel() {
+        const wallW = 100;
+        const wallH = canvasHeight * 0.42;
+        walls = [
+            { x: canvasWidth / 2 - wallW / 2, y: canvasHeight * 0.35, w: wallW, h: wallH }
+        ];
+
+        gates = [
+            { id: 0, x: 10, y: canvasHeight * 0.75, w: 160, h: 55, mult: 3 },
+            { id: 1, x: canvasWidth - 170, y: canvasHeight * 0.75, w: 160, h: 55, mult: 3 },
+            { id: 2, x: 10, y: canvasHeight * 0.45, w: 160, h: 55, mult: 2 },
+            { id: 3, x: canvasWidth - 170, y: canvasHeight * 0.45, w: 160, h: 55, mult: 2 }
+        ];
+
+        enemyBase.hp = enemyBase.maxHp;
+        updateUI();
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+
+    const handleInput = (e) => {
+        const x = e.touches ? e.touches[0].clientX : e.clientX;
+        const rect = canvas.getBoundingClientRect();
+        targetX = x - rect.left;
+        targetX = Math.max(playerRaft.width/2, Math.min(canvasWidth - playerRaft.width/2, targetX));
+    };
+
+    canvas.addEventListener('mousedown', (e) => {
+        isFiring = true;
+        handleInput(e);
+    });
+    window.addEventListener('mouseup', () => isFiring = false);
+    window.addEventListener('mousemove', handleInput);
+
+    canvas.addEventListener('touchstart', (e) => {
+        isFiring = true;
+        handleInput(e);
+    }, { passive: false });
+    window.addEventListener('touchend', () => isFiring = false);
+    window.addEventListener('touchmove', (e) => { 
+        handleInput(e); 
+        e.preventDefault(); 
+    }, { passive: false });
+
+    // --- 强化后的 3D 金币粒子类 ---
+    class Coin {
+        constructor(x, y, isMega = false) {
+            this.x = x;
+            this.y = y;
+            // 随机抛物线速度
+            this.vx = (Math.random() - 0.5) * (isMega ? 12 : 8);
+            this.vy = -(Math.random() * (isMega ? 8 : 5) + (isMega ? 8 : 5));
+            this.gravity = 0.45;
+            this.radius = isMega ? 10 : 8; // 增大金币尺寸
+            this.rotation = Math.random() * Math.PI * 2;
+            this.rotationSpeed = Math.random() * 0.25 + 0.15;
+            this.life = 1.0;
+            this.decay = 0.015 + Math.random() * 0.015;
+        }
+
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+            this.vy += this.gravity;
+            this.rotation += this.rotationSpeed;
+            this.life -= this.decay;
+        }
+
+        draw() {
+            const spinScale = Math.sin(this.rotation);
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.scale(Math.abs(spinScale) < 0.1 ? 0.1 : spinScale, 1.0); 
+            ctx.globalAlpha = Math.max(0, this.life);
+
+            // 绘制金币主体 (更明亮的金属质感)
+            const grad = ctx.createRadialGradient(0, 0, 1, 0, 0, this.radius);
+            grad.addColorStop(0, '#fef08a'); // 浅黄
+            grad.addColorStop(0.6, '#eab308'); // 金黄
+            grad.addColorStop(1, '#854d0e'); // 阴影
+            ctx.fillStyle = grad;
+            
+            ctx.beginPath();
+            ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 绘制金币侧边厚度感 (当 spinScale 较小时显示)
+            if (Math.abs(spinScale) < 0.5) {
+                ctx.fillStyle = '#ca8a04';
+                ctx.fillRect(-this.radius * 0.1, -this.radius, this.radius * 0.2, this.radius * 2);
+            }
+
+            // 绘制高光
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx.beginPath();
+            ctx.arc(-this.radius*0.3, -this.radius*0.3, this.radius*0.25, 0, Math.PI*2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+    }
+
+    function spawnCoins(x, y, count, isMega = false) {
+        for (let i = 0; i < count; i++) {
+            if (coins.length < 500) { 
+                coins.push(new Coin(x, y, isMega));
+            }
+        }
+    }
+
+    class Unit {
+        constructor(x, y, vx, vy, isEnemy) {
+            this.x = x;
+            this.y = y;
+            this.vx = vx;
+            this.vy = vy;
+            this.radius = 16; 
+            this.active = true;
+            this.isEnemy = isEnemy;
+            this.gateMask = 0; 
+            this.wobble = Math.random() * Math.PI * 2;
+        }
+
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+            this.vx *= 0.92;
+            this.wobble += 0.05;
+
+            if (this.x < 15 || this.x > canvasWidth - 15) {
+                this.vx *= -0.5;
+                this.x = Math.max(15, Math.min(canvasWidth - 15, this.x));
+            }
+
+            walls.forEach(w => {
+                if (this.x > w.x - 5 && this.x < w.x + w.w + 5 && 
+                    this.y > w.y - 5 && this.y < w.y + w.h + 5) {
+                    if (this.x < w.x + w.w/2) {
+                        this.x = w.x - 5;
+                        this.vx = -1.5;
+                    } else {
+                        this.x = w.x + w.w + 5;
+                        this.vx = 1.5;
+                    }
+                }
+            });
+
+            if (!this.isEnemy) {
+                for (let i = 0; i < gates.length; i++) {
+                    let g = gates[i];
+                    if (!(this.gateMask & (1 << i)) && 
+                        this.y < g.y + g.h && this.y > g.y && 
+                        this.x > g.x && this.x < g.x + g.w) {
+                        
+                        this.gateMask |= (1 << i);
+                        const spawnCount = Math.min(g.mult - 1, MAX_UNITS - survivors.length);
+                        for (let k = 0; k < spawnCount; k++) {
+                            const spread = (Math.random() - 0.5) * 12;
+                            let clone = new Unit(this.x, this.y, spread, this.vy, false);
+                            clone.gateMask = this.gateMask; 
+                            survivors.push(clone);
+                        }
+                    }
+                }
+
+                if (this.y < enemyBase.y + 40) {
+                    this.active = false;
+                    damageBase(10);
+                    // 打基地：爆出更多、更大的金币 (30枚)
+                    spawnCoins(this.x, enemyBase.y + 40, 30, true);
+                }
+            } else {
+                if (this.y > playerRaft.y + 30) {
+                    this.active = false;
+                    gameOver();
+                }
+            }
+        }
+
+        draw() {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.vx * 0.1 + Math.sin(this.wobble) * 0.1);
+
+            ctx.fillStyle = this.isEnemy ? '#450a0a' : '#1e3a8a';
+            ctx.beginPath();
+            ctx.roundRect(-this.radius, -this.radius/2, this.radius*2, this.radius*1.4, 8);
+            ctx.fill();
+
+            ctx.fillStyle = this.isEnemy ? '#ef4444' : '#38bdf8';
+            ctx.beginPath();
+            ctx.moveTo(-this.radius*0.7, this.radius/2);
+            ctx.lineTo(this.radius*0.7, this.radius/2);
+            ctx.lineTo(this.radius*0.4, -this.radius*0.6);
+            ctx.lineTo(-this.radius*0.4, -this.radius*0.6);
+            ctx.closePath();
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(0, -this.radius*0.9, this.radius*0.45, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+    }
+
+    function updateWorldPhysics() {
+        grid = {};
+        const allUnits = survivors.concat(enemies);
+        
+        for (let i = 0; i < allUnits.length; i++) {
+            const u = allUnits[i];
+            const gx = Math.floor(u.x / GRID_SIZE);
+            const gy = Math.floor(u.y / GRID_SIZE);
+            const key = `${gx},${gy}`;
+            if (!grid[key]) grid[key] = [];
+            grid[key].push(u);
+        }
+
+        for (let i = 0; i < survivors.length; i++) {
+            const s = survivors[i];
+            if (!s.active) continue;
+            const gx = Math.floor(s.x / GRID_SIZE);
+            const gy = Math.floor(s.y / GRID_SIZE);
+
+            for (let ox = -1; ox <= 1; ox++) {
+                for (let oy = -1; oy <= 1; oy++) {
+                    const cell = grid[`${gx + ox},${gy + oy}`];
+                    if (!cell) continue;
+                    for (let j = 0; j < cell.length; j++) {
+                        const target = cell[j];
+                        if (!target.active || target.isEnemy === s.isEnemy) continue;
+
+                        const dx = s.x - target.x;
+                        const dy = s.y - target.y;
+                        const distSq = dx*dx + dy*dy;
+
+                        if (distSq < 750) { 
+                            s.active = false;
+                            target.active = false;
+                            // 击杀敌人：正常爆出金币 (4枚)
+                            spawnCoins(s.x, s.y, 4);
+                            break;
+                        }
+                    }
+                }
+                if (!s.active) break;
+            }
+        }
+    }
+
+    function damageBase(val) {
+        enemyBase.hp -= val;
+        // 受到伤害时触发屏幕震动
+        shakeIntensity = 6; 
+        if (enemyBase.hp <= 0) {
+            enemyBase.hp = 0;
+            victory();
+        }
+    }
+
+    function updateUI() {
+        const hpPct = (enemyBase.hp / enemyBase.maxHp) * 100;
+        hpFill.style.width = hpPct + '%';
+        hpText.innerText = `${Math.max(0, Math.ceil(enemyBase.hp))} / ${enemyBase.maxHp}`;
+        mobCountEl.innerText = survivors.length;
+        enemyCountEl.innerText = enemies.length;
+
+        const currentIdx = currentPressureIndex % PRESSURES.length;
+        const totalDuration = WAVE_DURATIONS[currentIdx];
+        const waveProgress = (waveFrameCounter / totalDuration);
+        waveProgressFill.style.width = (waveProgress * 100) + '%';
+        
+        const currentMultiplier = PRESSURES[currentIdx];
+        if (currentMultiplier < 1.0) {
+            pressureInfo.innerText = "威胁等级: 侦查 (安全)";
+            pressureInfo.style.color = "#4ade80";
+            waveProgressFill.style.backgroundColor = "#22c55e";
+        } else if (currentMultiplier < 2.0) {
+            pressureInfo.innerText = "威胁等级: 中等 (稳步)";
+            pressureInfo.style.color = "#fbbf24";
+            waveProgressFill.style.backgroundColor = "#eab308";
+        } else {
+            pressureInfo.innerText = "威胁等级: 极高 (爆发)";
+            pressureInfo.style.color = "#f87171";
+            waveProgressFill.style.backgroundColor = "#ef4444";
+        }
+    }
+
+    function gameOver() {
+        gameActive = false;
+        overlay.style.display = 'flex';
+        document.getElementById('title-msg').innerText = "BASE LOST";
+        document.getElementById('title-msg').className = "text-5xl font-black mb-4 italic text-red-500 text-center px-4 leading-tight";
+        document.getElementById('desc-msg').innerText = "海盗军团冲破了你的防线。";
+        actionBtn.innerText = "再次集结";
+    }
+
+    function victory() {
+        gameActive = false;
+        overlay.style.display = 'flex';
+        document.getElementById('title-msg').innerText = "AREA SECURED";
+        document.getElementById('title-msg').className = "text-5xl font-black mb-4 italic text-sky-400 text-center px-4 leading-tight";
+        document.getElementById('desc-msg').innerText = "要塞已被攻克。";
+        actionBtn.innerText = "进攻下一据点";
+    }
+
+    function gameLoop() {
+        // --- 画面震动处理 ---
+        let sx = 0, sy = 0;
+        if (shakeIntensity > 0.1) {
+            sx = (Math.random() - 0.5) * shakeIntensity;
+            sy = (Math.random() - 0.5) * shakeIntensity;
+            shakeIntensity *= 0.9; // 震动衰减
+        } else {
+            shakeIntensity = 0;
+        }
+
+        ctx.save();
+        ctx.translate(sx, sy); // 应用震动平移
+
+        ctx.fillStyle = '#082f49';
+        ctx.fillRect(-10, -10, canvasWidth + 20, canvasHeight + 20); // 填充稍大的区域防止震动露白
+
+        // 墙体
+        ctx.fillStyle = '#1e293b';
+        walls.forEach(w => {
+            ctx.fillRect(w.x, w.y, w.w, w.h);
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.05)';
+            ctx.strokeRect(w.x + 8, w.y + 8, w.w - 16, w.h - 16);
+        });
+
+        // 倍增门
+        gates.forEach(g => {
+            const grad = ctx.createLinearGradient(g.x, 0, g.x + g.w, 0);
+            grad.addColorStop(0, '#1d4ed8');
+            grad.addColorStop(1, '#1e40af');
+            ctx.fillStyle = grad;
+            ctx.fillRect(g.x, g.y, g.w, g.h);
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 26px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(`X${g.mult}`, g.x + g.w/2, g.y + 36);
+        });
+
+        // 基地
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(canvasWidth/2 - enemyBase.width/2, enemyBase.y - 70, enemyBase.width, enemyBase.height);
+
+        if (gameActive) {
+            playerRaft.x += (targetX - playerRaft.x) * 0.15;
+            ctx.fillStyle = '#78350f';
+            ctx.fillRect(playerRaft.x - 45, playerRaft.y, 90, 20);
+
+            // 手动发射频率
+            if (isFiring && frameCount % 12 === 0 && survivors.length < MAX_UNITS) {
+                survivors.push(new Unit(playerRaft.x, playerRaft.y - 25, 0, -0.65, false));
+            }
+
+            // 敌方逻辑
+            const currentIdx = currentPressureIndex % PRESSURES.length;
+            const currentMultiplier = PRESSURES[currentIdx];
+            const targetEnemyCount = Math.max(8, Math.floor(survivors.length * currentMultiplier));
+            
+            waveFrameCounter++;
+            if (waveFrameCounter >= WAVE_DURATIONS[currentIdx]) {
+                currentPressureIndex++;
+                waveFrameCounter = 0; 
+            }
+
+            if (enemies.length < targetEnemyCount) {
+                const deficit = targetEnemyCount - enemies.length;
+                const spawnBatch = deficit > 40 ? 3 : (deficit > 10 ? 2 : 1);
+                let spawnInterval = deficit > 20 ? 12 : 25;
+                
+                if (frameCount % spawnInterval === 0) {
+                    for(let b=0; b<spawnBatch; b++) {
+                        let spawnX = (Math.random() > 0.5) ? (20 + Math.random() * (canvasWidth/2 - 70)) : (canvasWidth/2 + 50 + Math.random() * (canvasWidth/2 - 70));
+                        const initialVx = (Math.random() - 0.5) * 6;
+                        enemies.push(new Unit(spawnX, enemyBase.y + 35, initialVx, 0.42, true));
+                    }
+                }
+            }
+
+            updateWorldPhysics();
+
+            // 渲染士兵
+            for (let i = survivors.length - 1; i >= 0; i--) {
+                const s = survivors[i];
+                s.update();
+                if (!s.active) { survivors.splice(i, 1); continue; }
+                s.draw();
+            }
+
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const e = enemies[i];
+                e.update();
+                if (!e.active) { enemies.splice(i, 1); continue; }
+                e.draw();
+            }
+
+            // 渲染金币
+            ctx.globalAlpha = 1.0;
+            for (let i = coins.length - 1; i >= 0; i--) {
+                const c = coins[i];
+                c.update();
+                c.draw();
+                if (c.life <= 0) coins.splice(i, 1);
+            }
+
+            updateUI();
+            frameCount++;
+        }
+
+        ctx.restore(); // 还原坐标系，防止震动累积
+        requestAnimationFrame(gameLoop);
+    }
+
+    actionBtn.addEventListener('click', () => {
+        if (enemyBase.hp <= 0) {
+            enemyBase.maxHp = Math.floor(enemyBase.maxHp * 1.5);
+        }
+        survivors = [];
+        enemies = [];
+        coins = [];
+        frameCount = 0;
+        waveFrameCounter = 0; 
+        currentPressureIndex = 0;
+        isFiring = false; 
+        shakeIntensity = 0;
+        enemyBase.hp = enemyBase.maxHp;
+        gameActive = true;
+        overlay.style.display = 'none';
+    });
+
+    gameLoop();
+</script>
+</body>
+</html>
